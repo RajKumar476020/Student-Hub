@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
-import path from 'path'
 import fs from 'fs'
 import { ZipArchive } from 'archiver'
+import { getFilePath } from '@/lib/storage'
+
+export const dynamic = 'force-dynamic'
 
 const MAX_ZIP_SIZE_BYTES = 200 * 1024 * 1024 // 200 MB
 
@@ -44,10 +46,7 @@ export async function GET(
     return NextResponse.json({ error: 'Notebook too large to download (max 200MB)' }, { status: 400 })
   }
 
-  const STORAGE_PATH = process.env.LOCAL_STORAGE_PATH || './uploads'
-
   try {
-    // archiver v8 uses ESM named export ZipArchive
     const archive = new ZipArchive({ zlib: { level: 6 } })
 
     const chunks: Buffer[] = []
@@ -58,13 +57,12 @@ export async function GET(
     })
 
     notebook.files.forEach((file) => {
-      const filePath = path.join(process.cwd(), STORAGE_PATH, file.storageKey)
+      const filePath = getFilePath(file.storageKey)
       if (fs.existsSync(filePath)) {
         archive.file(filePath, { name: file.name })
       }
     })
 
-    // Finalize must be awaited - it triggers the streaming
     await archive.finalize()
     const zipBuffer = await zipPromise
 
