@@ -5,16 +5,22 @@ import os from 'os'
 import { randomUUID } from 'crypto'
 
 export function getStorageDir(): string {
-  // If explicitly configured, use it
+  // On Vercel / serverless / production environments, the filesystem is STRICTLY read-only except /tmp
+  // Even if LOCAL_STORAGE_PATH="./uploads" is set in Vercel environment variables, override it to /tmp
+  if (
+    process.env.VERCEL === '1' ||
+    process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.NODE_ENV === 'production'
+  ) {
+    return path.join(os.tmpdir(), 'studyhub_uploads')
+  }
+
+  // If explicitly configured for local development
   if (process.env.LOCAL_STORAGE_PATH) {
     return path.isAbsolute(process.env.LOCAL_STORAGE_PATH)
       ? process.env.LOCAL_STORAGE_PATH
       : path.join(process.cwd(), process.env.LOCAL_STORAGE_PATH)
-  }
-
-  // On Vercel / serverless environments, the filesystem is read-only except for /tmp
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NODE_ENV === 'production') {
-    return path.join(os.tmpdir(), 'studyhub_uploads')
   }
 
   // Local development fallback
