@@ -1,0 +1,185 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  username      String   @unique @db.VarChar(30)
+  email         String   @unique @db.VarChar(255)
+  passwordHash  String?  @map("password_hash")
+  displayName   String   @map("display_name") @db.VarChar(100)
+  avatarUrl     String?  @map("avatar_url")
+  bio           String?  @db.VarChar(280)
+  institution   String?  @db.VarChar(150)
+  emailVerified Boolean  @default(false) @map("email_verified")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  ownedNotebooks        Notebook[]              @relation("NotebookOwner")
+  uploadedFiles         File[]
+  createdFolders        Folder[]
+  createdNotes          Note[]
+  collaborations        NotebookCollaborator[]  @relation("CollaboratorUser")
+  sentInvitations       NotebookCollaborator[]  @relation("InvitedBy")
+  comments              Comment[]
+  reports               Report[]
+  notifications         Notification[]
+
+  @@map("users")
+}
+
+model Notebook {
+  id            String   @id @default(uuid())
+  ownerId       String   @map("owner_id")
+  title         String   @db.VarChar(150)
+  slug          String   @unique @db.VarChar(180)
+  description   String?
+  tag           String?  @db.VarChar(50)
+  coverColor    String   @default("#6D28D9") @map("cover_color") @db.VarChar(20)
+  visibility    String   @default("private") @db.VarChar(10)
+  viewCount     Int      @default(0) @map("view_count")
+  downloadCount Int      @default(0) @map("download_count")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  owner         User                   @relation("NotebookOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  folders       Folder[]
+  files         File[]
+  notes         Note[]
+  collaborators NotebookCollaborator[]
+  comments      Comment[]
+  reports       Report[]               @relation("NotebookReport")
+
+  @@index([visibility])
+  @@map("notebooks")
+}
+
+model Folder {
+  id             String    @id @default(uuid())
+  notebookId     String    @map("notebook_id")
+  parentFolderId String?   @map("parent_folder_id")
+  name           String    @db.VarChar(100)
+  createdBy      String    @map("created_by")
+  deletedAt      DateTime? @map("deleted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  notebook      Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+  parentFolder  Folder?  @relation("FolderChildren", fields: [parentFolderId], references: [id], onDelete: Cascade)
+  children      Folder[] @relation("FolderChildren")
+  creator       User     @relation(fields: [createdBy], references: [id])
+  files         File[]
+  notes         Note[]
+
+  @@map("folders")
+}
+
+model File {
+  id            String    @id @default(uuid())
+  notebookId    String    @map("notebook_id")
+  folderId      String?   @map("folder_id")
+  uploaderId    String    @map("uploader_id")
+  name          String    @db.VarChar(255)
+  mimeType      String    @map("mime_type") @db.VarChar(100)
+  sizeBytes     BigInt    @map("size_bytes")
+  storageKey    String    @map("storage_key")
+  downloadCount Int       @default(0) @map("download_count")
+  deletedAt     DateTime? @map("deleted_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  notebook Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+  folder   Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  uploader User     @relation(fields: [uploaderId], references: [id])
+
+  @@map("files")
+}
+
+model Note {
+  id         String   @id @default(uuid())
+  notebookId String   @map("notebook_id")
+  folderId   String?  @map("folder_id")
+  title      String   @db.VarChar(150)
+  contentMd  String   @default("") @map("content_md")
+  createdBy  String   @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  notebook Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+  folder   Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  creator  User     @relation(fields: [createdBy], references: [id])
+
+  @@map("notes")
+}
+
+model NotebookCollaborator {
+  id          String    @id @default(uuid())
+  notebookId  String    @map("notebook_id")
+  userId      String    @map("user_id")
+  invitedBy   String    @map("invited_by")
+  status      String    @default("pending") @db.VarChar(10)
+  invitedAt   DateTime  @default(now()) @map("invited_at")
+  respondedAt DateTime? @map("responded_at")
+
+  notebook Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+  user     User     @relation("CollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
+  inviter  User     @relation("InvitedBy", fields: [invitedBy], references: [id])
+
+  @@unique([notebookId, userId])
+  @@map("notebook_collaborators")
+}
+
+model Comment {
+  id              String    @id @default(uuid())
+  notebookId      String    @map("notebook_id")
+  userId          String    @map("user_id")
+  parentCommentId String?   @map("parent_comment_id")
+  content         String    @db.VarChar(1000)
+  isDeleted       Boolean   @default(false) @map("is_deleted")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  notebook      Notebook  @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentComment Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies       Comment[] @relation("CommentReplies")
+
+  @@map("comments")
+}
+
+model Report {
+  id         String   @id @default(uuid())
+  targetType String   @map("target_type") @db.VarChar(20)
+  targetId   String   @map("target_id")
+  reporterId String   @map("reporter_id")
+  reason     String   @db.VarChar(30)
+  details    String?
+  status     String   @default("open") @db.VarChar(15)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  reporter User      @relation(fields: [reporterId], references: [id])
+  notebook Notebook? @relation("NotebookReport", fields: [targetId], references: [id], map: "reports_notebook_fk")
+
+  @@map("reports")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String   @db.VarChar(40)
+  payload   Json     @default("{}")
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
